@@ -1,0 +1,45 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "cjs"
+  generatedFileExtension = "ts"
+  previewFeatures        = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+model Product {
+  productId           String         @id @map("product_id") @db.Uuid
+  sellerId            String?        @map("seller_id") @db.Uuid
+  productName         String         @map("product_name")
+  productDescription  String?        @map("product_description")
+  productPrice        Decimal        @map("product_price")
+  productAvailability Boolean        @map("product_availability")
+  seller              Seller?        @relation(fields: [sellerId], references: [sellerId])
+  vectorRecord        ProductVector?
+
+  @@map("product")
+}
+
+model Seller {
+  sellerId     String    @id @map("seller_id") @db.Uuid
+  businessName String?   @map("business_name")
+  address      String?   @map("address")
+  city         String?   @map("city")
+  region       String?   @map("region")
+  products     Product[]
+
+  @@map("sellers")
+}
+
+model ProductVector {
+  vectorId  String                  @id @default(uuid()) @map("vector_id") @db.Uuid
+  productId String                  @unique @map("product_id") @db.Uuid
+  product   Product                 @relation(fields: [productId], references: [productId], onDelete: Cascade)
+  embedding Unsupported("vector(768)")
+
+  @@map("product_vectors")
+}

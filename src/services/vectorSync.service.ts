@@ -3,7 +3,7 @@ import { Prisma } from '../generated/prisma/client'
 import { getGoogleGenAI } from '../lib/gemini'
 import { getPrismaClient } from '../lib/prisma'
 
-const EMBEDDING_MODEL = 'text-embedding-004'
+const EMBEDDING_MODEL = 'gemini-embedding-001'
 const EMBEDDING_DIMENSIONS = 768
 
 const toVectorLiteral = (values: number[]): string => `[${values.join(',')}]`
@@ -54,7 +54,10 @@ const buildProductEmbeddingPayload = (product: ProductWithSeller): string => {
 export const generateTextEmbedding = async (textPayload: string): Promise<number[]> => {
   const response = await getGoogleGenAI().models.embedContent({
     model: EMBEDDING_MODEL,
-    contents: textPayload
+    contents: textPayload,
+    config: {
+      outputDimensionality: EMBEDDING_DIMENSIONS
+    }
   })
 
   const values = response.embeddings?.[0]?.values

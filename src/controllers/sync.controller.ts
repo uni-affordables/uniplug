@@ -43,7 +43,7 @@ interface SyncSuccessResponse {
   success: true
 }
 
-const EMBEDDING_MODEL = 'text-embedding-004'
+const EMBEDDING_MODEL = 'gemini-embedding-001'
 const EMBEDDING_DIMENSIONS = 768
 
 const isProductSyncRequestBody = (value: unknown): value is ProductSyncRequestBody => {
@@ -141,7 +141,10 @@ export const syncProduct = asyncHandler(async (
 
   const embeddingResponse = await getGoogleGenAI().models.embedContent({
     model: EMBEDDING_MODEL,
-    contents: textPayload
+    contents: textPayload,
+    config: {
+      outputDimensionality: EMBEDDING_DIMENSIONS
+    }
   })
 
   const embeddingValues = embeddingResponse.embeddings?.[0]?.values

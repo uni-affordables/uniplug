@@ -32,6 +32,24 @@ const MODEL_NAME = 'gemini-2.5-flash'
 const MAX_TOOL_ROUNDS = 4
 const MAX_HISTORY_TURNS = 20
 const MAX_RESULTS = 12
+const SEARCH_STOP_WORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'any',
+  'anywhere',
+  'around',
+  'at',
+  'for',
+  'from',
+  'in',
+  'of',
+  'on',
+  'or',
+  'the',
+  'to',
+  'with'
+])
 
 const SYSTEM_INSTRUCTION = `
 You are UniPlug, the intelligent conversational campus concierge and peer-to-peer shopping buddy for the UNIA platform.
@@ -1078,35 +1096,6 @@ export class UniPlugService {
     }
 
     if (normalizedSearchTerm !== undefined) {
-      const semanticMatches = await executeSemanticSearch(normalizedSearchTerm, MAX_RESULTS)
-      const filteredSemanticMatches = semanticMatches.filter((product) => {
-        if (args.maxPrice !== undefined && Number(product.productPrice) > args.maxPrice) {
-          return false
-        }
-
-        const sellerLocation = [
-          product.seller?.address,
-          product.seller?.city,
-          product.seller?.region
-        ]
-          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-          .join(' ')
-          .toLowerCase()
-
-        if (
-          args.campusLocation !== undefined &&
-          !sellerLocation.includes(args.campusLocation.toLowerCase())
-        ) {
-          return false
-        }
-
-        return product.productAvailability
-      })
-
-      if (filteredSemanticMatches.length > 0) {
-        return filteredSemanticMatches.slice(0, MAX_RESULTS)
-      }
-
       where.OR = [
         {
           productName: {
@@ -1147,6 +1136,36 @@ export class UniPlugService {
           }
         }
       ]
+
+      const directMatches = await getPrismaClient().product.findMany({
+        where,
+        include: {
+          seller: {
+            select: {
+              sellerId: true,
+              businessName: true,
+              address: true,
+              city: true,
+              region: true
+            }
+          }
+        },
+        take: MAX_RESULTS
+      })
+
+      if (directMatches.length > 0) {
+        return directMatches
+      }
+
+      const semanticMatches = await executeSemanticSearch(normalizedSearchTerm, MAX_RESULTS)
+      const filteredSemanticMatches = semanticMatches.filter((product) => (
+        this.productMatchesFilters(product, args) &&
+        this.hasSearchTermOverlap(product, normalizedSearchTerm)
+      ))
+
+      if (filteredSemanticMatches.length > 0) {
+        return filteredSemanticMatches.slice(0, MAX_RESULTS)
+      }
     }
 
     return getPrismaClient().product.findMany({
@@ -1182,6 +1201,62 @@ export class UniPlugService {
     }
 
     return searchTerm.trim()
+  }
+
+  private productMatchesFilters(product: Product & {
+    seller?: {
+      address?: string | null
+      city?: string | null
+      region?: string | null
+    } | null
+  }, args: QueryCampusInventoryArgs): boolean {
+    if (!product.productAvailability) {
+      return false
+    }
+
+    if (args.maxPrice !== undefined && Number(product.productPrice) > args.maxPrice) {
+      return false
+    }
+
+    if (args.campusLocation === undefined) {
+      return true
+    }
+
+    const sellerLocation = [
+      product.seller?.address,
+      product.seller?.city,
+      product.seller?.region
+    ]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .join(' ')
+      .toLowerCase()
+
+    return sellerLocation.includes(args.campusLocation.toLowerCase())
+  }
+
+  private hasSearchTermOverlap(product: Product, searchTerm: string): boolean {
+    const normalizedSearchTerm = searchTerm.trim().toLowerCase()
+    const productText = [
+      product.productName,
+      product.productDescription ?? ''
+    ]
+      .join(' ')
+      .toLowerCase()
+
+    if (productText.includes(normalizedSearchTerm)) {
+      return true
+    }
+
+    const keywords = normalizedSearchTerm
+      .split(/[^a-z0-9]+/i)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3 && !SEARCH_STOP_WORDS.has(token))
+
+    if (keywords.length === 0) {
+      return false
+    }
+
+    return keywords.some((keyword) => productText.includes(keyword))
   }
 
   private extractTextResponse(response: GenerateContentResponse): string {

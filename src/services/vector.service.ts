@@ -66,13 +66,19 @@ export const executeSemanticSearch = async (
     return []
   }
 
-  const productIds = hits.map((hit) => hit.productId)
+  const targetProductIds = hits.map((hit) => hit.productId)
   const products = await prisma.product.findMany({
     where: {
       productId: {
-        in: productIds
+        in: targetProductIds
       },
-      productAvailability: true
+      productAvailability: true,
+      deletedAt: null,
+      seller: {
+        is: {
+          deletedAt: null
+        }
+      }
     },
     include: {
       seller: {
@@ -89,7 +95,7 @@ export const executeSemanticSearch = async (
 
   const productMap = new Map(products.map((product) => [product.productId, product]))
 
-  return productIds
+  return targetProductIds
     .map((id) => productMap.get(id))
     .filter((product): product is ProductWithSeller => product !== undefined)
 }

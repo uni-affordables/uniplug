@@ -1057,7 +1057,13 @@ export class UniPlugService {
 
   private async queryCampusInventory(args: QueryCampusInventoryArgs): Promise<Product[]> {
     const where: Prisma.ProductWhereInput = {
-      productAvailability: true
+      productAvailability: true,
+      deletedAt: null,
+      seller: {
+        is: {
+          deletedAt: null
+        }
+      }
     }
 
     const normalizedSearchTerm = this.toSearchKeyword(args.searchTerm)
@@ -1071,6 +1077,7 @@ export class UniPlugService {
     if (args.campusLocation !== undefined) {
       where.seller = {
         is: {
+          deletedAt: null,
           OR: [
             {
               address: {

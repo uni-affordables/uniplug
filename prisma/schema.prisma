@@ -18,6 +18,7 @@ model Product {
   productDescription  String?        @map("product_description")
   productPrice        Decimal        @map("product_price")
   productAvailability Boolean        @map("product_availability")
+  deletedAt           DateTime?      @map("deleted_at") @db.Timestamptz(6)
   seller              Seller?        @relation(fields: [sellerId], references: [sellerId])
   vectorRecord        ProductVector?
 
@@ -30,6 +31,7 @@ model Seller {
   address      String?   @map("address")
   city         String?   @map("city")
   region       String?   @map("region")
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
   products     Product[]
 
   @@map("sellers")

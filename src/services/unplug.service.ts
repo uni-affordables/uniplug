@@ -53,6 +53,42 @@ const SEARCH_STOP_WORDS = new Set([
   'with'
 ])
 
+const normalizeSearchToken = (token: string): string => {
+  const normalized = token.trim().toLowerCase()
+
+  if (normalized.length <= 3) {
+    return normalized
+  }
+
+  if (normalized.endsWith('ies') && normalized.length > 4) {
+    return `${normalized.slice(0, -3)}y`
+  }
+
+  if (normalized.endsWith('es') && normalized.length > 4) {
+    return normalized.slice(0, -2)
+  }
+
+  if (normalized.endsWith('s') && !normalized.endsWith('ss') && normalized.length > 3) {
+    return normalized.slice(0, -1)
+  }
+
+  return normalized
+}
+
+const extractSearchKeywords = (value: string): string[] => {
+  const keywords = new Set<string>()
+
+  for (const rawToken of value.split(/[^a-z0-9]+/i)) {
+    const token = normalizeSearchToken(rawToken)
+
+    if (token.length >= 3 && !SEARCH_STOP_WORDS.has(token)) {
+      keywords.add(token)
+    }
+  }
+
+  return [...keywords]
+}
+
 const SYSTEM_INSTRUCTION = `
 You are UniPlug, the intelligent conversational campus concierge and peer-to-peer shopping buddy for the UNIA platform.
 
@@ -1106,7 +1142,8 @@ export class UniPlugService {
     }
 
     if (normalizedSearchTerm !== undefined) {
-      where.OR = [
+      const searchKeywords = extractSearchKeywords(normalizedSearchTerm)
+      const searchClauses: Prisma.ProductWhereInput[] = [
         {
           productName: {
             contains: normalizedSearchTerm,
@@ -1147,6 +1184,25 @@ export class UniPlugService {
         }
       ]
 
+      for (const keyword of searchKeywords) {
+        searchClauses.push(
+          {
+            productName: {
+              contains: keyword,
+              mode: 'insensitive'
+            }
+          },
+          {
+            productDescription: {
+              contains: keyword,
+              mode: 'insensitive'
+            }
+          }
+        )
+      }
+
+      where.OR = searchClauses
+
       const directMatches = await getPrismaClient().product.findMany({
         where,
         include: {
@@ -1168,12 +1224,19 @@ export class UniPlugService {
       }
 
       const semanticMatches = await executeSemanticSearch(normalizedSearchTerm, MAX_RESULTS)
-      const filteredSemanticMatches = semanticMatches.filter((product) => (
-        this.productMatchesFilters(product, args) &&
-        this.hasSearchTermOverlap(product, normalizedSearchTerm)
-      ))
+      const filteredSemanticMatches = semanticMatches.filter((product) =>
+        this.productMatchesFilters(product, args)
+      )
 
       if (filteredSemanticMatches.length > 0) {
+        const overlappingSemanticMatches = filteredSemanticMatches.filter((product) =>
+          this.hasSearchTermOverlap(product, normalizedSearchTerm)
+        )
+
+        if (overlappingSemanticMatches.length > 0) {
+          return overlappingSemanticMatches.slice(0, MAX_RESULTS)
+        }
+
         return filteredSemanticMatches.slice(0, MAX_RESULTS)
       }
     }
@@ -1257,16 +1320,18 @@ export class UniPlugService {
       return true
     }
 
-    const keywords = normalizedSearchTerm
-      .split(/[^a-z0-9]+/i)
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 3 && !SEARCH_STOP_WORDS.has(token))
+    const keywords = extractSearchKeywords(normalizedSearchTerm)
 
     if (keywords.length === 0) {
       return false
     }
 
-    return keywords.some((keyword) => productText.includes(keyword))
+    const normalizedProductTokens = new Set(extractSearchKeywords(productText))
+
+    return keywords.some((keyword) => (
+      productText.includes(keyword) ||
+      normalizedProductTokens.has(keyword)
+    ))
   }
 
   private toInventoryProductResponse(product: InventoryProduct): InventoryProductResponse {

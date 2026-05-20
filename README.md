@@ -1,23 +1,26 @@
-# Getting Started with [Fastify-CLI](https://www.npmjs.com/package/fastify-cli)
-This project was bootstrapped with Fastify-CLI.
+# UniPlug API
 
-## Available Scripts
+Backend for UniPlug chat and sync services.
 
-In the project directory, you can run:
+## Environment variables
 
-### `npm run dev`
+- `ALLOW_USE=true|false`
+  Controls the frontend-facing availability flag exposed by `GET /api/unplug/status`.
+  This does not disable `POST /api/chat` or `POST /api/sync/product`; it only reports whether the frontend should allow usage.
 
-To start the app in dev mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+## API
 
-### `npm start`
+- `GET /health`
+- `GET /api/unplug/status`
+- `POST /api/chat`
+- `POST /api/sync/product`
 
-For production mode
+`GET /api/unplug/status` returns:
 
-### `npm run test`
+```json
+{
+  "allowUse": true
+}
+```
 
-Run the test cases.
-
-## Learn More
-
-To learn Fastify, check out the [Fastify documentation](https://fastify.dev/docs/latest/).
+If `ALLOW_USE` is unset, the API defaults `allowUse` to `false`.

@@ -7,6 +7,7 @@ import express, {
 } from 'express'
 import chatRouter from './routes/chat.routes'
 import syncRouter from './routes/sync.routes'
+import unplugRouter from './routes/unplug.routes'
 
 type AppError = Error & {
   statusCode?: number
@@ -23,6 +24,7 @@ app.get('/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' })
 })
 
+app.use('/api/unplug', unplugRouter)
 app.use('/api/chat', chatRouter)
 app.use('/api/sync', syncRouter)
 

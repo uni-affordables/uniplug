@@ -14,7 +14,9 @@ import { executeSemanticSearch } from './vector.service'
 import type {
   ChatApiResponse,
   ChatHistoryEntry,
-  ChatRequestBody
+  ChatRequestBody,
+  InventoryProduct,
+  InventoryProductResponse
 } from '../types/chat'
 
 interface QueryCampusInventoryArgs {
@@ -24,7 +26,7 @@ interface QueryCampusInventoryArgs {
 }
 
 interface ToolExecutionResult {
-  inventoryData: Product[]
+  inventoryData: InventoryProductResponse[]
   parts: Part[]
 }
 
@@ -865,7 +867,7 @@ export class UniPlugService {
     this.assertConfiguration()
 
     let contents = this.buildConversationContents(payload.message, payload.chatHistory)
-    let inventoryData: Product[] = []
+    let inventoryData: InventoryProductResponse[] = []
     let usedInventoryTool = false
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
@@ -977,7 +979,7 @@ export class UniPlugService {
 
   private async executeFunctionCalls(functionCalls: FunctionCall[]): Promise<ToolExecutionResult> {
     const parts: Part[] = []
-    let inventoryData: Product[] = []
+    let inventoryData: InventoryProductResponse[] = []
 
     for (const functionCall of functionCalls) {
       if (functionCall.name !== 'queryCampusInventory') {
@@ -996,14 +998,15 @@ export class UniPlugService {
 
       const args = this.parseInventoryArgs(functionCall.args)
       const rows = await this.queryCampusInventory(args)
+      const responseRows = rows.map((row) => this.toInventoryProductResponse(row))
 
-      inventoryData = rows
+      inventoryData = responseRows
       parts.push({
         functionResponse: {
           id: functionCall.id,
           name: functionCall.name,
           response: {
-            result: rows
+            result: responseRows
           }
         }
       })
@@ -1055,7 +1058,7 @@ export class UniPlugService {
     return normalized.length > 0 ? normalized : undefined
   }
 
-  private async queryCampusInventory(args: QueryCampusInventoryArgs): Promise<Product[]> {
+  private async queryCampusInventory(args: QueryCampusInventoryArgs): Promise<InventoryProduct[]> {
     const where: Prisma.ProductWhereInput = {
       productAvailability: true,
       deletedAt: null,
@@ -1264,6 +1267,61 @@ export class UniPlugService {
     }
 
     return keywords.some((keyword) => productText.includes(keyword))
+  }
+
+  private toInventoryProductResponse(product: InventoryProduct): InventoryProductResponse {
+    const { media: _media, ...rest } = product
+
+    return {
+      ...rest,
+      imageUrls: this.extractImageUrls(product.media)
+    }
+  }
+
+  private extractImageUrls(media: Prisma.JsonValue | null): string[] {
+    const urls = new Set<string>()
+
+    const visit = (value: Prisma.JsonValue | null): void => {
+      if (typeof value === 'string') {
+        const normalized = value.trim()
+
+        if (/^https?:\/\//i.test(normalized)) {
+          urls.add(normalized)
+        }
+
+        return
+      }
+
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          visit(item)
+        }
+
+        return
+      }
+
+      if (value && typeof value === 'object') {
+        for (const [key, nestedValue] of Object.entries(value)) {
+          if (
+            typeof nestedValue === 'string' &&
+            ['url', 'mediaUrl', 'media_url', 'imageUrl', 'image_url', 'src', 'secure_url'].includes(key)
+          ) {
+            const normalized = nestedValue.trim()
+
+            if (/^https?:\/\//i.test(normalized)) {
+              urls.add(normalized)
+            }
+            continue
+          }
+
+          visit(nestedValue as Prisma.JsonValue)
+        }
+      }
+    }
+
+    visit(media)
+
+    return [...urls]
   }
 
   private extractTextResponse(response: GenerateContentResponse): string {

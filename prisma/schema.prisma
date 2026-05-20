@@ -17,6 +17,7 @@ model Product {
   productName         String         @map("product_name")
   productDescription  String?        @map("product_description")
   productPrice        Decimal        @map("product_price")
+  media               Json?          @default("[]") @map("media")
   productAvailability Boolean        @map("product_availability")
   deletedAt           DateTime?      @map("deleted_at") @db.Timestamptz(6)
   seller              Seller?        @relation(fields: [sellerId], references: [sellerId])
